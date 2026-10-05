@@ -1,159 +1,139 @@
+import { useState } from "react";
+import { useChain } from "./state/useChain";
+import { RevisionPanel } from "./ui/RevisionPanel";
+import { MergePanel } from "./ui/MergePanel";
+import { DownstreamPanel } from "./ui/DownstreamPanel";
+import { AuditPanel } from "./ui/AuditPanel";
+import { fieldLabel } from "./ui/MergePanel";
+import type { ConclusionFields } from "./domain/types";
 import "./styles.css";
 
-const project = {
-  "id": "hxwl-01",
-  "port": 5101,
-  "title": "听力验配记录",
-  "subtitle": "门店听力师的验配档案与听力曲线工作台",
-  "stack": "React + Vite + TypeScript + CSS",
-  "theme": [
-    "#155e75",
-    "#22c55e",
-    "#f97316"
-  ],
-  "domain": "听力验配",
-  "users": [
-    "听力师",
-    "门店主管",
-    "复诊助理"
-  ],
-  "metrics": [
-    "左耳PTA",
-    "右耳PTA",
-    "言语识别率",
-    "复诊天数"
-  ],
-  "filters": [
-    "初配",
-    "复调",
-    "儿童",
-    "老人"
-  ],
-  "fields": [
-    "气导",
-    "骨导",
-    "言语识别率",
-    "助听器型号",
-    "增益调整",
-    "用户反馈"
-  ],
-  "records": [
-    [
-      "Liu-024",
-      "双耳高频下降",
-      "初配",
-      "RIC机型，2kHz后增益提高4dB"
-    ],
-    [
-      "Chen-118",
-      "单侧传导性损失",
-      "复调",
-      "低频压缩略降，反馈啸叫已消失"
-    ],
-    [
-      "Zhao-077",
-      "老人语频区下降",
-      "复诊",
-      "言语识别率从64%提升到76%"
-    ]
-  ]
-};
-
-const statusColors = ["status-ok", "status-watch", "status-danger"];
-
-function MetricCard({ label, value, index }: { label: string; value: string; index: number }) {
-  return (
-    <article className="metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <i className={statusColors[index % statusColors.length]} />
-    </article>
-  );
+function showValue(f: keyof ConclusionFields, v: unknown): string {
+  return Array.isArray(v) ? `第 ${v.join("、")} 天` : String(v);
 }
 
-function App() {
-  const values = project.metrics.map((metric: string, index: number) => {
-    const base = [84, 12, 31, 7][index % 4];
-    return String(base + index * 3);
-  });
+export default function App() {
+  const { ctx, act, resetDemo } = useChain();
+  const { service, recordId, audiologist1, audiologist2, supervisor } = ctx;
+  const [toast, setToast] = useState("");
+  const record = service.state.records.find((r) => r.id === recordId)!;
+  const stationA = service.state.stations.find((s) => s.id === "station-A")!;
+  const stationB = service.state.stations.find((s) => s.id === "station-B")!;
+
+  const flash = (msg: string) => act(() => setToast(msg));
+  const refresh = () => act(() => {});
 
   return (
     <main className="app-shell">
       <section className="hero">
         <div>
-          <p className="eyebrow">{project.id} · port {project.port}</p>
-          <h1>{project.title}</h1>
-          <p className="subtitle">{project.subtitle}</p>
+          <p className="eyebrow">hxwl-01 · 可续作的验配链</p>
+          <h1>听力验配 · 修订合并与复诊设备联动工作台</h1>
+          <p className="subtitle">
+            离线修订按序号合并、冲突全留待确认、结论生效后预约与设备预占失效重算、批次失败整批恢复、全程留痕可追查。
+          </p>
         </div>
         <div className="stack-card">
-          <span>技术栈</span>
-          <strong>{project.stack}</strong>
+          <span>档案</span>
+          <strong>
+            {record.patientName}（{record.patientId}）
+          </strong>
+          <small>
+            当前有效结论 <b>v{record.current.version}</b>
+          </small>
+          <button className="mini reset" onClick={resetDemo}>
+            重置演示数据
+          </button>
         </div>
       </section>
 
-      <section className="metrics-grid">
-        {project.metrics.map((metric: string, index: number) => (
-          <MetricCard key={metric} label={metric} value={values[index]} index={index} />
+      {toast && (
+        <div className="toast" onClick={() => setToast("")}>
+          {toast}
+        </div>
+      )}
+
+      <section className="stations">
+        {[
+          { s: stationA, who: audiologist1.name },
+          { s: stationB, who: audiologist2.name },
+        ].map(({ s, who }) => (
+          <article key={s.id} className={`station-card ${s.online ? "online" : "offline"}`}>
+            <div>
+              <strong>{s.name}</strong>
+              <small>{who} 使用中</small>
+            </div>
+            <span className={`pill ${s.online ? "ok" : "off"}`}>
+              {s.online ? "在线" : `断网 · 发件箱 ${s.outbox.length} 条待回连`}
+            </span>
+          </article>
         ))}
+        <article className="station-card guide">
+          <strong>建议演练顺序</strong>
+          <small>
+            ① 两工位分别断网各改一版 → ② 回连同步看冲突候选 → ③ 主管裁决写依据并确认 → ④ 观察预约失效重算、设备释放/再占
+          </small>
+        </article>
       </section>
 
       <section className="workspace">
-        <aside className="panel narrow">
-          <h2>角色</h2>
-          <div className="chips">
-            {project.users.map((user: string) => (
-              <span key={user}>{user}</span>
-            ))}
-          </div>
-          <h2>筛选</h2>
-          <div className="chips muted">
-            {project.filters.map((filter: string) => (
-              <button key={filter}>{filter}</button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="panel">
-          <div className="section-heading">
-            <div>
-              <p>{project.domain}</p>
-              <h2>记录字段</h2>
-            </div>
-            <button className="primary-action">新增记录</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
-      </section>
-
-      <section className="records panel">
-        <div className="section-heading">
-          <div>
-            <p>示例数据</p>
-            <h2>近期记录</h2>
-          </div>
-          <button>导出摘要</button>
-        </div>
-        <div className="record-list">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")} className="record-card">
-              <div className="record-index">{String(index + 1).padStart(2, "0")}</div>
+        <div className="panel-col">
+          <section className="panel">
+            <div className="section-heading">
               <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
+                <p>当前有效结论</p>
+                <h2>
+                  v{record.current.version}
+                  {record.pendingMerge && <span className="tag danger ml">有未确认合并，现行结论仍有效</span>}
+                </h2>
               </div>
-            </article>
-          ))}
+            </div>
+            <div className="conclusion-grid">
+              {(Object.keys(record.current.fields) as (keyof ConclusionFields)[]).map((f) => (
+                <div key={f} className="conc-cell">
+                  <span>{fieldLabel(f)}</span>
+                  <strong>{showValue(f, record.current.fields[f])}</strong>
+                </div>
+              ))}
+            </div>
+            <p className="basis">{record.current.basis}</p>
+          </section>
+
+          <section className="panel">
+            <RevisionPanel
+              service={service}
+              recordId={recordId}
+              actor={audiologist1}
+              actorRole="audiologist1"
+              onDone={refresh}
+            />
+          </section>
+
+          <section className="panel">
+            <RevisionPanel
+              service={service}
+              recordId={recordId}
+              actor={audiologist2}
+              actorRole="audiologist2"
+              onDone={refresh}
+            />
+          </section>
+        </div>
+
+        <div className="panel-col">
+          <section className="panel">
+            <MergePanel service={service} recordId={recordId} supervisor={supervisor} onDone={(m) => flash(m ?? "已确认")} />
+          </section>
+
+          <section className="panel">
+            <DownstreamPanel service={service} recordId={recordId} supervisor={supervisor} onDone={(m) => flash(m ?? "")} />
+          </section>
+
+          <section className="panel">
+            <AuditPanel service={service} recordId={recordId} />
+          </section>
         </div>
       </section>
     </main>
   );
 }
-
-export default App;
